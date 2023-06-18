@@ -7,7 +7,16 @@ from stochastic_processes import BlackScholesProcess
 class EuropeanCall:
 	def __init__(self):
 		pass
-		
+	
+	def get_option_price(self, S=None, sigma=None, risk_free=None, dividend=None, K=None, exercise_date=None,
+                         calculation_date=None, day_count=None, dt=None, evaluation_method="Numpy", model="BlackScholes"):
+        	if model == "BlackScholes":
+            		return self.get_BS_price(S, sigma, risk_free, dividend, K, exercise_date, calculation_date, day_count, dt,
+                                     evaluation_method)
+       		elif model == "Heston":
+           		return self.get_heston_price(S, sigma, risk_free, dividend, K, exercise_date, calculation_date, day_count, dt,
+                                         evaluation_method)
+    
 	def get_BS_price(self,S=None, sigma = None,risk_free = None, \
 												dividend = None, K = None, exercise_date = None, calculation_date = None, \
 												day_count = None, dt = None, evaluation_method = "Numpy"):
@@ -40,7 +49,23 @@ class EuropeanCall:
 				d2 = np.divide(np.log(S / K) + (risk_free - dividend - 0.5 * sigma ** 2) * T, sigma * np.sqrt(T))
 			
 			return (S * stats.norm.cdf(d1, 0.0, 1.0) - K * np.exp(-risk_free * T) * stats.norm.cdf(d2, 0.0, 1.0))
-					
+	
+	def get_heston_price(self, S=None, sigma=None, risk_free=None, dividend=None, K=None, exercise_date=None,
+                         calculation_date=None, day_count=None, dt=None, evaluation_method="Numpy"):
+        	if evaluation_method == "QuantLib":
+            		stochastic_process = HestonProcess(s0=S, v0=sigma**2, risk_free=risk_free, dividend=dividend,
+                                               kappa=0.2, theta=0.1, sigma=sigma, rho=-0.5, day_count=day_count)
+            		engine = ql.AnalyticHestonEngine(stochastic_process.get_process(calculation_date))
+            		ql_payoff = ql.PlainVanillaPayoff(ql.Option.Call, K)
+            		exercise_date = ql.EuropeanExercise(exercise_date)
+            		instrument = ql.VanillaOption(ql_payoff, exercise_date)
+            		instrument.setPricingEngine(engine)
+            		return instrument.NPV()
+        	elif evaluation_method == "Numpy":
+            		# Heston pricing with Numpy is not available, you can implement it using numerical methods if needed.
+            		raise NotImplementedError("Numerical Heston pricing is not implemented.")
+		
+		
 	def get_BS_delta(self,S=None, sigma = None,risk_free = None, \
 												dividend = None, K = None, exercise_date = None, calculation_date = None, \
 												day_count = None, dt = None, evaluation_method = "Numpy"):
@@ -139,3 +164,69 @@ class EuropeanCall:
 				PnL_BS -= epsilon
 				
 		return PnL_BS
+	
+	
+	def get_Heston_delta(self, S=None, sigma=None, risk_free=None, dividend=None, K=None, exercise_date=None,
+                         calculation_date=None, day_count=None, dt=None, evaluation_method="Numpy"):
+        	if evaluation_method == "QuantLib":
+            		stochastic_process = HestonProcess(s0=S, v0=sigma**2, risk_free=risk_free, dividend=dividend,
+                                               kappa=0.2, theta=0.1, sigma=sigma, rho=-0.5, day_count=day_count)
+            		engine = ql.AnalyticHestonEngine(stochastic_process.get_process(calculation_date))
+            		ql_payoff = ql.PlainVanillaPayoff(ql.Option.Call, K)
+            		exercise_date = ql.EuropeanExercise(exercise_date)
+            		instrument = ql.VanillaOption(ql_payoff, exercise_date)
+            		instrument.setPricingEngine(engine)
+            		return instrument.delta()
+        	
+		elif evaluation_method == "Numpy":
+           		 # Heston delta with Numpy is not available, you can implement it using numerical methods if needed.
+            		raise NotImplementedError("Numerical Heston delta is not implemented.")
+    
+    	def get_Heston_vega(self, S=None, sigma=None, risk_free=None, dividend=None, K=None, exercise_date=None,
+                        calculation_date=None, day_count=None, dt=None, evaluation_method="Numpy"):
+        	if evaluation_method == "QuantLib":
+            		stochastic_process = HestonProcess(s0=S, v0=sigma**2, risk_free=risk_free, dividend=dividend,
+                                               kappa=0.2, theta=0.1, sigma=sigma, rho=-0.5, day_count=day_count)
+            		engine = ql.AnalyticHestonEngine(stochastic_process.get_process(calculation_date))
+            		ql_payoff = ql.PlainVanillaPayoff(ql.Option.Call, K)
+            		exercise_date = ql.EuropeanExercise(exercise_date)
+            		instrument = ql.VanillaOption(ql_payoff, exercise_date)
+            		instrument.setPricingEngine(engine)
+            		return instrument.vega()
+        	elif evaluation_method == "Numpy":
+            		# Heston vega with Numpy is not available, you can implement it using numerical methods if needed.
+            		raise NotImplementedError("Numerical Heston vega is not implemented.")
+    
+    	def get_Heston_PnL(self, S=None, payoff=None, delta=None, dt=None, risk_free=None, final_period_cost=None,
+                       epsilon=None, cost_structure="proportional"):
+        	# Compute Heston PnL (for a short position)
+        	N = S.shape[1] - 1
+        
+        	PnL_Heston = np.multiply(S[:, 0], -delta[:, 0])
+        
+        	if cost_structure == "proportional":
+            		PnL_Heston -= np.abs(delta[:, 0]) * S[:, 0] * epsilon
+        	elif cost_structure == "constant":
+            		PnL_Heston -= epsilon
+        
+        	PnL_Heston = PnL_Heston * np.exp(risk_free * dt)
+        
+        	for t in range(1, N):
+            		PnL_Heston += np.multiply(S[:, t], -delta[:, t] + delta[:, t - 1])
+            
+            		if cost_structure == "proportional":
+                		PnL_Heston -= np.abs(delta[:, t] - delta[:, t - 1]) * S[:, t] * epsilon
+            		elif cost_structure == "constant":
+                		PnL_Heston -= epsilon
+                
+            		PnL_Heston = PnL_Heston * np.exp(risk_free * dt)
+        
+        	PnL_Heston += np.multiply(S[:, N], delta[:, N - 1]) + payoff
+        
+        	if final_period_cost:
+            		if cost_structure == "proportional":
+                		PnL_Heston -= np.abs(delta[:, N - 1]) * S[:, N] * epsilon
+            		elif cost_structure == "constant":
+                		PnL_Heston -= epsilon
+                
+        	return PnL_Heston
