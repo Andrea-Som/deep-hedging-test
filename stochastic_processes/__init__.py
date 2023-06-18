@@ -1,1 +1,2 @@
 from .BlackScholesProcess import BlackScholesProcess
+from .BlackScholesProcess import HestonProcess
